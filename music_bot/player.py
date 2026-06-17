@@ -8,7 +8,7 @@ from collections import defaultdict, deque
 from typing import Dict, Optional
 
 from pytgcalls import PyTgCalls
-from pytgcalls.types.input_stream import AudioPiped
+from pytgcalls.types import MediaStream
 
 from .config import MAX_QUEUE_SIZE, URL_REFRESH_BEFORE_EXPIRY
 from .youtube import SongInfo, refresh_url
@@ -112,7 +112,7 @@ class MusicPlayer:
 
         song = await self._ensure_fresh_url(song)
 
-        stream = AudioPiped(song.url)
+        stream = MediaStream(song.url)
 
         for attempt in range(1, 4):
             try:
