@@ -12,8 +12,6 @@ import sys
 
 from pyrogram import Client, idle
 from pytgcalls import PyTgCalls
-from pytgcalls.types import Update
-from pytgcalls.types.stream import StreamAudioEnded
 
 from .config import (
     API_HASH,
@@ -90,12 +88,9 @@ async def main() -> None:
     player = MusicPlayer(calls)
 
     # ── حدث انتهاء البث (FIXED) ─────────────────────────────
-    @calls.on_update()
-    async def _stream_end_handler(client, update: Update):
+    @calls.on_stream_end()
+    async def _stream_end_handler(client, update):
         try:
-            if not isinstance(update, StreamAudioEnded):
-                return
-
             chat_id = getattr(update, "chat_id", None)
 
             if not chat_id:
