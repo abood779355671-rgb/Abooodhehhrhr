@@ -8,13 +8,10 @@ main.py — نقطة دخول البوت الرئيسية
 
 import asyncio
 import logging
-import signal
 import sys
 
 from pyrogram import Client, idle
 from pytgcalls import PyTgCalls
-from pytgcalls import filters as call_filters
-from pytgcalls.types import Update
 
 from .config import (
     API_HASH,
@@ -50,7 +47,7 @@ async def _maintenance_loop(db: Database) -> None:
     """مهام صيانة دورية تعمل في الخلفية."""
     while True:
         try:
-            await asyncio.sleep(3600)  # كل ساعة
+            await asyncio.sleep(3600)
             db.cleanup_old_stats(days=30)
             await rate_limiter.cleanup()
             logger.info("دورة الصيانة الدورية اكتملت.")
@@ -61,7 +58,6 @@ async def _maintenance_loop(db: Database) -> None:
 
 
 async def main() -> None:
-    """نقطة الدخول الرئيسية."""
     setup_logging()
     _validate_config()
 
@@ -69,10 +65,10 @@ async def main() -> None:
     logger.info("بدء تشغيل البوت...")
     logger.info("=" * 60)
 
-    # ── تهيئة قاعدة البيانات ────────────────────────────────────────────
+    # ── قاعدة البيانات ─────────────────────────────
     db = Database(DB_PATH)
 
-    # ── تهيئة عملاء Pyrogram ────────────────────────────────────────────
+    # ── عملاء Pyrogram ─────────────────────────────
     bot = Client(
         "music_bot",
         api_id=API_ID,
@@ -87,20 +83,26 @@ async def main() -> None:
         session_string=ASSISTANT_SESSION,
     )
 
-    # ── تهيئة PyTgCalls ─────────────────────────────────────────────────
+    # ── PyTgCalls ─────────────────────────────
     calls = PyTgCalls(assistant)
     player = MusicPlayer(calls)
 
-    # ── معالج انتهاء البث ───────────────────────────────────────────────
-    @calls.on_update(call_filters.stream_end)
-    async def _stream_end_handler(_: PyTgCalls, update: Update) -> None:
-        chat_id: int = update.chat_id
-        logger.info("[%d] انتهى البث — الانتقال للتالية.", chat_id)
+    # ── حدث انتهاء البث (FIXED) ─────────────────────────────
+    @calls.on_update()
+    async def _stream_end_handler(client, update):
         try:
+            chat_id = getattr(update, "chat_id", None)
+
+            if not chat_id:
+                return
+
+            logger.info("[%s] انتهى البث — الانتقال للتالية.", chat_id)
+
             next_song = await player.on_stream_end(chat_id)
+
             if next_song:
-                logger.info("[%d] يعمل الآن: %s", chat_id, next_song.title)
-                # إرسال إشعار للسجلات
+                logger.info("[%s] يعمل الآن: %s", chat_id, next_song.title)
+
                 await send_log(
                     bot,
                     f"⏭ انتقال تلقائي\n"
@@ -108,24 +110,27 @@ async def main() -> None:
                     f"الأغنية: {next_song.title}",
                 )
             else:
-                logger.info("[%d] انتهت جميع الأغاني — مغادرة المكالمة.", chat_id)
-        except Exception as e:
-            logger.exception("[%d] خطأ في معالج انتهاء البث: %s", chat_id, e)
+                logger.info("[%s] انتهت جميع الأغاني — مغادرة المكالمة.", chat_id)
 
-    # ── تسجيل المعالجات ─────────────────────────────────────────────────
+        except Exception as e:
+            logger.exception("خطأ في معالج انتهاء البث: %s", e)
+
+    # ── تسجيل المعالجات ─────────────────────────────
     register_general_handlers(bot)
     register_developer_handlers(bot, db)
     register_group_handlers(bot, db, player)
 
-    # ── بدء التشغيل ─────────────────────────────────────────────────────
-    logger.info("بدء تشغيل عميل البوت...")
+    # ── تشغيل الخدمات ─────────────────────────────
+    logger.info("بدء تشغيل البوت...")
     await bot.start()
+
     logger.info("بدء تشغيل المساعد...")
     await assistant.start()
+
     logger.info("بدء تشغيل PyTgCalls...")
     await calls.start()
 
-    # إشعار المطور بالبدء
+    # ── إشعار التشغيل ─────────────────────────────
     try:
         await bot.send_message(
             OWNER_ID,
@@ -137,17 +142,16 @@ async def main() -> None:
     except Exception:
         pass
 
-    logger.info("✅ البوت يعمل بنجاح!")
-    logger.info("اضغط Ctrl+C للإيقاف.")
+    logger.info("✅ البوت يعمل الآن!")
 
-    # ── مهام الخلفية ────────────────────────────────────────────────────
+    # ── مهام خلفية ─────────────────────────────
     maintenance_task = asyncio.create_task(_maintenance_loop(db))
 
-    # ── الانتظار حتى إنهاء التشغيل ──────────────────────────────────────
     try:
         await idle()
     finally:
-        logger.info("جاري الإيقاف النظيف...")
+        logger.info("جاري الإيقاف...")
+
         maintenance_task.cancel()
         try:
             await maintenance_task
@@ -158,10 +162,12 @@ async def main() -> None:
             await calls.stop()
         except Exception:
             pass
+
         try:
             await assistant.stop()
         except Exception:
             pass
+
         try:
             await bot.stop()
         except Exception:
@@ -171,11 +177,10 @@ async def main() -> None:
 
 
 def run() -> None:
-    """نقطة الدخول القابلة للاستدعاء من run.py."""
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
-        logger.info("تم الإيقاف بأمر المستخدم.")
+        logger.info("تم الإيقاف يدويًا.")
     except Exception as e:
         logger.critical("خطأ فادح: %s", e, exc_info=True)
         sys.exit(1)
