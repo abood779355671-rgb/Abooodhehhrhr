@@ -1,4 +1,4 @@
-pyrogram==2.0.106
+Kurigram==2.2.22
 TgCrypto==1.2.5
 
 py-tgcalls==2.3.3
