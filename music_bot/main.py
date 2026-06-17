@@ -88,7 +88,7 @@ async def main() -> None:
     player = MusicPlayer(calls)
 
     # ── حدث انتهاء البث (FIXED) ─────────────────────────────
-    @calls.on_update()
+    @calls.on_stream_end()
     async def _stream_end_handler(client, update):
         try:
             chat_id = getattr(update, "chat_id", None)
